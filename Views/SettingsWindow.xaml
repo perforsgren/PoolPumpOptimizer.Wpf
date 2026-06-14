@@ -4,9 +4,9 @@
         xmlns:views="clr-namespace:PoolPumpOptimizer.Wpf.Views"
         Title="Inställningar"
         Width="550"
-        Height="725"
+        Height="900"
         MinWidth="550"
-        MinHeight="725"
+        MinHeight="900"
         WindowStartupLocation="CenterOwner"
         ResizeMode="CanResize">
 
@@ -27,7 +27,7 @@
                            FontSize="22"
                            FontWeight="SemiBold"
                            Foreground="{StaticResource BrushText}" />
-                <TextBlock Text="Tibber, home och proxy"
+                <TextBlock Text="Tibber, Shelly och proxy"
                            Style="{StaticResource MutedText}"
                            Margin="0,5,0,0" />
             </StackPanel>
@@ -56,6 +56,70 @@
 
                         <Button Content="Ladda Tibber homes"
                                 Command="{Binding LoadHomesCommand}" />
+                    </StackPanel>
+                </Border>
+
+
+                <Border Style="{StaticResource CardCompact}">
+                    <StackPanel>
+                        <TextBlock Text="Shelly Cloud"
+                                   Style="{StaticResource SectionTitle}" />
+
+                        <TextBlock Text="Molnserver"
+                                   Style="{StaticResource MutedText}" />
+                        <TextBox Text="{Binding ShellyCloudServer,
+                                                Mode=TwoWay,
+                                                UpdateSourceTrigger=PropertyChanged}" />
+
+                        <views:TokenBox Label="Nyckel för molnåtkomst"
+                                        Token="{Binding ShellyCloudAuthKey,
+                                                        Mode=TwoWay,
+                                                        UpdateSourceTrigger=PropertyChanged}" />
+
+                        <TextBlock Text="Device ID"
+                                   Style="{StaticResource MutedText}" />
+                        <TextBox Text="{Binding ShellyDeviceId,
+                                                Mode=TwoWay,
+                                                UpdateSourceTrigger=PropertyChanged}" />
+
+                        <views:NumberBox Label="Switch-ID"
+                                         Unit=""
+                                         Value="{Binding ShellySwitchId,
+                                                         Mode=TwoWay,
+                                                         UpdateSourceTrigger=PropertyChanged}"
+                                         Minimum="0"
+                                         Maximum="99"
+                                         Step="1"
+                                         Decimals="0" />
+
+                        <CheckBox Content="Aktivera manuell PÅ/AV-styrning"
+                                  IsChecked="{Binding ShellyManualControlEnabled,
+                                                      Mode=TwoWay}"
+                                  Margin="0,8,0,4" />
+
+                        <TextBlock Text="När detta är aktiverat kan knapparna i huvudfönstret slå poolpumpen på och av via Shelly Cloud."
+                                   Foreground="{StaticResource BrushTextMuted}"
+                                   FontSize="11"
+                                   TextWrapping="Wrap"
+                                   Margin="0,0,0,6" />
+
+                        <Grid Margin="0,4,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+
+                            <Button Grid.Column="0"
+                                    Content="Testa anslutning"
+                                    Command="{Binding TestShellyConnectionCommand}"
+                                    Margin="0,4,4,4" />
+
+                            <Button Grid.Column="1"
+                                    Content="Läs status"
+                                    Command="{Binding ReadShellyStatusCommand}"
+                                    Style="{StaticResource PrimaryButton}"
+                                    Margin="4,4,0,4" />
+                        </Grid>
                     </StackPanel>
                 </Border>
 
@@ -100,7 +164,7 @@
                 </Grid.ColumnDefinitions>
 
                 <TextBlock Grid.Column="0"
-                           Text="Valt home sparas automatiskt när du byter."
+                           Text="Valt Tibber-home sparas automatiskt. Övriga värden sparas med Spara."
                            Foreground="{StaticResource BrushTextMuted}"
                            VerticalAlignment="Center" />
 

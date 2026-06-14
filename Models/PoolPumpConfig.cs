@@ -37,4 +37,32 @@ public sealed class PoolPumpConfig
         "http://proxyvip.foreningssparbanken.se:8080";
 
     public bool PrintRawTibberJson { get; set; }
+
+    /// <summary>
+    /// Shelly Cloud-servern som visas i Shelly-appen under molninställningar.
+    /// Exempel: https://shelly-268-eu.shelly.cloud
+    /// </summary>
+    public string ShellyCloudServer { get; set; } = "";
+
+    /// <summary>
+    /// Nyckel för molnåtkomst från Shelly-appen.
+    /// Sparas öppet i settings.json enligt vald v1-lösning.
+    /// </summary>
+    public string ShellyCloudAuthKey { get; set; } = "";
+
+    /// <summary>
+    /// Shelly-enhetens Device ID, exempelvis D885AC173570.
+    /// </summary>
+    public string ShellyDeviceId { get; set; } = "";
+
+    /// <summary>
+    /// ID för switch-komponenten. För Shelly Plug S Gen3 är detta normalt 0.
+    /// </summary>
+    public int ShellySwitchId { get; set; }
+
+    /// <summary>
+    /// Aktiverar manuella PÅ/AV-kommandon från applikationen.
+    /// Automatisk planstyrning ingår inte i denna fas.
+    /// </summary>
+    public bool ShellyManualControlEnabled { get; set; }
 }

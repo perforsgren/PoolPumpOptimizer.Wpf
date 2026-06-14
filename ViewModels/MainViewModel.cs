@@ -26,6 +26,16 @@ public sealed class MainViewModel : ObservableObject
     private string _lastUpdatedTimeText = "-";
     private string _lastUpdatedTooltipText = "Ingen uppdatering ännu.";
 
+    private string _shellyOnlineText = "Inte läst";
+    private string _shellyOutputText = "-";
+    private string _shellyPowerText = "-";
+    private string _shellyVoltageText = "-";
+    private string _shellyCurrentText = "-";
+    private string _shellyOnTimeText = "-";
+    private string _shellySwitchOnCountText = "-";
+    private string _shellyLastReadTimeText = "-";
+    private string _shellyLastReadTooltipText = "Ingen Shelly-status har lästs ännu.";
+
     private Brush _lastUpdatedBrush =
         new SolidColorBrush(Color.FromRgb(242, 245, 248));
 
@@ -39,6 +49,7 @@ public sealed class MainViewModel : ObservableObject
     private decimal _minExtraCheapBlockMinutes;
     private decimal _minOnMinutes;
     private decimal _minOffMinutes;
+    private decimal _shellySwitchId;
 
     private bool _isInitialized;
 
@@ -74,6 +85,9 @@ public sealed class MainViewModel : ObservableObject
         _minOffMinutes =
             _config.MinOffMinutes;
 
+        _shellySwitchId =
+            _config.ShellySwitchId;
+
         DayFilters.Add("Alla");
         DayFilters.Add("Idag");
         DayFilters.Add("Imorgon");
@@ -95,6 +109,18 @@ public sealed class MainViewModel : ObservableObject
 
         ClearLogCommand =
             new RelayCommand(ClearLogAsync);
+
+        TestShellyConnectionCommand =
+            new RelayCommand(TestShellyConnectionAsync);
+
+        ReadShellyStatusCommand =
+            new RelayCommand(ReadShellyStatusAsync);
+
+        TurnShellyOnCommand =
+            new RelayCommand(TurnShellyOnAsync);
+
+        TurnShellyOffCommand =
+            new RelayCommand(TurnShellyOffAsync);
 
         PriceSeries = Array.Empty<ISeries>();
 
@@ -158,6 +184,14 @@ public sealed class MainViewModel : ObservableObject
     public RelayCommand LoadSettingsCommand { get; }
 
     public RelayCommand ClearLogCommand { get; }
+
+    public RelayCommand TestShellyConnectionCommand { get; }
+
+    public RelayCommand ReadShellyStatusCommand { get; }
+
+    public RelayCommand TurnShellyOnCommand { get; }
+
+    public RelayCommand TurnShellyOffCommand { get; }
 
     public ISeries[] PriceSeries { get; private set; }
 
@@ -290,6 +324,75 @@ public sealed class MainViewModel : ObservableObject
 
             _config.ProxyAddress = value;
 
+            OnPropertyChanged();
+        }
+    }
+
+    public string ShellyCloudServer
+    {
+        get => _config.ShellyCloudServer;
+
+        set
+        {
+            if (_config.ShellyCloudServer == value)
+                return;
+
+            _config.ShellyCloudServer = value;
+            OnPropertyChanged();
+        }
+    }
+
+    public string ShellyCloudAuthKey
+    {
+        get => _config.ShellyCloudAuthKey;
+
+        set
+        {
+            if (_config.ShellyCloudAuthKey == value)
+                return;
+
+            _config.ShellyCloudAuthKey = value;
+            OnPropertyChanged();
+        }
+    }
+
+    public string ShellyDeviceId
+    {
+        get => _config.ShellyDeviceId;
+
+        set
+        {
+            if (_config.ShellyDeviceId == value)
+                return;
+
+            _config.ShellyDeviceId = value;
+            OnPropertyChanged();
+        }
+    }
+
+    public decimal ShellySwitchId
+    {
+        get => _shellySwitchId;
+
+        set
+        {
+            var clamped = Clamp(value, 0m, 99m);
+
+            if (!SetProperty(ref _shellySwitchId, clamped))
+                return;
+        }
+    }
+
+    public bool ShellyManualControlEnabled
+    {
+        get => _config.ShellyManualControlEnabled;
+
+        set
+        {
+            if (_config.ShellyManualControlEnabled == value)
+                return;
+
+            _config.ShellyManualControlEnabled = value;
             OnPropertyChanged();
         }
     }
@@ -595,6 +698,60 @@ public sealed class MainViewModel : ObservableObject
                 value);
     }
 
+    public string ShellyOnlineText
+    {
+        get => _shellyOnlineText;
+        private set => SetProperty(ref _shellyOnlineText, value);
+    }
+
+    public string ShellyOutputText
+    {
+        get => _shellyOutputText;
+        private set => SetProperty(ref _shellyOutputText, value);
+    }
+
+    public string ShellyPowerText
+    {
+        get => _shellyPowerText;
+        private set => SetProperty(ref _shellyPowerText, value);
+    }
+
+    public string ShellyVoltageText
+    {
+        get => _shellyVoltageText;
+        private set => SetProperty(ref _shellyVoltageText, value);
+    }
+
+    public string ShellyCurrentText
+    {
+        get => _shellyCurrentText;
+        private set => SetProperty(ref _shellyCurrentText, value);
+    }
+
+    public string ShellyOnTimeText
+    {
+        get => _shellyOnTimeText;
+        private set => SetProperty(ref _shellyOnTimeText, value);
+    }
+
+    public string ShellySwitchOnCountText
+    {
+        get => _shellySwitchOnCountText;
+        private set => SetProperty(ref _shellySwitchOnCountText, value);
+    }
+
+    public string ShellyLastReadTimeText
+    {
+        get => _shellyLastReadTimeText;
+        private set => SetProperty(ref _shellyLastReadTimeText, value);
+    }
+
+    public string ShellyLastReadTooltipText
+    {
+        get => _shellyLastReadTooltipText;
+        private set => SetProperty(ref _shellyLastReadTooltipText, value);
+    }
+
     /// <summary>
     /// Initierar applikationen efter att huvudfönstret har laddats.
     /// Om en Tibber-token finns laddas Tibber homes automatiskt.
@@ -606,20 +763,30 @@ public sealed class MainViewModel : ObservableObject
 
         _isInitialized = true;
 
-        if (string.IsNullOrWhiteSpace(TibberToken))
+        var initializedSomething = false;
+
+        if (!string.IsNullOrWhiteSpace(TibberToken))
         {
             SetStatus(
-                "Redo. Ange Tibber-token i inställningar.",
+                "Token hittad. Laddar Tibber homes automatiskt...",
                 "Info");
 
-            return;
+            await LoadHomesAsync();
+            initializedSomething = true;
         }
 
-        SetStatus(
-            "Token hittad. Laddar Tibber homes automatiskt...",
-            "Info");
+        if (HasShellyConfiguration())
+        {
+            await ReadShellyStatusAsync();
+            initializedSomething = true;
+        }
 
-        await LoadHomesAsync();
+        if (!initializedSomething)
+        {
+            SetStatus(
+                "Redo. Ange Tibber- och Shelly-inställningar i Inställningar.",
+                "Info");
+        }
     }
 
     /// <summary>
@@ -807,6 +974,76 @@ public sealed class MainViewModel : ObservableObject
     }
 
     /// <summary>
+    /// Testar anslutningen till Shelly Cloud genom att läsa enhetsstatus.
+    /// </summary>
+    private async Task TestShellyConnectionAsync()
+    {
+        try
+        {
+            SetStatus(
+                "Testar anslutningen till Shelly Cloud...",
+                "Info");
+
+            UpdateConfigFromUi();
+
+            using var client =
+                new ShellyCloudClient(_config);
+
+            var shellyStatus =
+                await client.TestConnectionAsync();
+
+            ApplyShellyStatus(shellyStatus);
+
+            SetStatus(
+                shellyStatus.IsOnline
+                    ? "Anslutningen till Shelly Cloud fungerar. Enheten är online."
+                    : "Anslutningen till Shelly Cloud fungerar, men enheten är offline.",
+                shellyStatus.IsOnline ? "OK" : "Varning");
+        }
+        catch (Exception ex)
+        {
+            SetStatus(
+                $"Shelly-testet misslyckades: {ex.Message}",
+                "Fel");
+        }
+    }
+
+    /// <summary>
+    /// Läser aktuell status för vald Shelly-switch.
+    /// </summary>
+    private async Task ReadShellyStatusAsync()
+    {
+        try
+        {
+            SetStatus(
+                "Läser Shelly-status...",
+                "Info");
+
+            UpdateConfigFromUi();
+
+            using var client =
+                new ShellyCloudClient(_config);
+
+            var shellyStatus =
+                await client.GetSwitchStatusAsync();
+
+            ApplyShellyStatus(shellyStatus);
+
+            SetStatus(
+                shellyStatus.IsOnline
+                    ? "Shelly-status läst."
+                    : "Shelly-status läst. Enheten är offline.",
+                shellyStatus.IsOnline ? "OK" : "Varning");
+        }
+        catch (Exception ex)
+        {
+            SetStatus(
+                $"Kunde inte läsa Shelly-status: {ex.Message}",
+                "Fel");
+        }
+    }
+
+    /// <summary>
     /// Rensar statusloggen.
     /// </summary>
     private Task ClearLogAsync()
@@ -821,6 +1058,64 @@ public sealed class MainViewModel : ObservableObject
     }
 
     /// <summary>
+    /// Slår på poolpumpens Shelly-switch och verifierar resultatet.
+    /// </summary>
+    private Task TurnShellyOnAsync()
+    {
+        return SetShellySwitchStateAsync(true);
+    }
+
+    /// <summary>
+    /// Slår av poolpumpens Shelly-switch och verifierar resultatet.
+    /// </summary>
+    private Task TurnShellyOffAsync()
+    {
+        return SetShellySwitchStateAsync(false);
+    }
+
+    /// <summary>
+    /// Skickar ett explicit PÅ- eller AV-kommando till Shelly Cloud.
+    /// Toggle används aldrig eftersom det kan ge fel slutläge om statusen är gammal.
+    /// </summary>
+    private async Task SetShellySwitchStateAsync(bool turnOn)
+    {
+        try
+        {
+            UpdateConfigFromUi();
+
+            if (!ShellyManualControlEnabled)
+            {
+                throw new InvalidOperationException(
+                    "Manuell Shelly-styrning är inte aktiverad. " +
+                    "Aktivera den i Inställningar och spara först.");
+            }
+
+            var targetText = turnOn ? "PÅ" : "AV";
+
+            SetStatus(
+                $"Skickar Shelly-kommando: {targetText}...",
+                "Info");
+
+            using var client = new ShellyCloudClient(_config);
+
+            var verifiedStatus =
+                await client.SetSwitchStateAsync(turnOn);
+
+            ApplyShellyStatus(verifiedStatus);
+
+            SetStatus(
+                $"Shelly-kommandot verifierades. Pumpen är {targetText}.",
+                "OK");
+        }
+        catch (Exception ex)
+        {
+            SetStatus(
+                $"Shelly-styrningen misslyckades: {ex.Message}",
+                "Fel");
+        }
+    }
+
+    /// <summary>
     /// Applicerar en inläst konfiguration och uppdaterar alla UI-properties.
     /// </summary>
     private void ApplyLoadedConfig(
@@ -832,6 +1127,13 @@ public sealed class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(UseProxy));
         OnPropertyChanged(nameof(ProxyAddress));
         OnPropertyChanged(nameof(IgnorePastSlots));
+        OnPropertyChanged(nameof(ShellyCloudServer));
+        OnPropertyChanged(nameof(ShellyCloudAuthKey));
+        OnPropertyChanged(nameof(ShellyDeviceId));
+        OnPropertyChanged(nameof(ShellyManualControlEnabled));
+
+        ShellySwitchId =
+            _config.ShellySwitchId;
 
         MinRunHoursPerDay =
             _config.MinRunHoursPerDay;
@@ -920,6 +1222,20 @@ public sealed class MainViewModel : ObservableObject
             SelectedHome?.AppNickname
             ?? _config.PreferredTibberHomeNickname;
 
+        _config.ShellyCloudServer =
+            ShellyCloudServer?.Trim() ?? "";
+
+        _config.ShellyCloudAuthKey =
+            ShellyCloudAuthKey?.Trim() ?? "";
+
+        _config.ShellyDeviceId =
+            ShellyDeviceId?.Trim() ?? "";
+
+        _config.ShellySwitchId =
+            (int)Math.Round(
+                ShellySwitchId,
+                MidpointRounding.AwayFromZero);
+
         ValidateConfig();
     }
 
@@ -969,6 +1285,12 @@ public sealed class MainViewModel : ObservableObject
                 _config.MinOffMinutes,
                 15,
                 1440);
+
+        _config.ShellySwitchId =
+            Math.Clamp(
+                _config.ShellySwitchId,
+                0,
+                99);
     }
 
     /// <summary>
@@ -1116,6 +1438,35 @@ public sealed class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(PriceSeries));
         OnPropertyChanged(nameof(XAxes));
         OnPropertyChanged(nameof(YAxes));
+    }
+
+    /// <summary>
+    /// Applicerar Shelly-statusen på dashboardens read-only-fält.
+    /// </summary>
+    private void ApplyShellyStatus(
+        ShellySwitchStatus status)
+    {
+        ShellyOnlineText = status.OnlineText;
+        ShellyOutputText = status.OutputText;
+        ShellyPowerText = status.ActivePowerText;
+        ShellyVoltageText = status.VoltageText;
+        ShellyCurrentText = status.CurrentText;
+        ShellyOnTimeText = status.OnTimeText;
+        ShellySwitchOnCountText = status.SwitchOnCountText;
+        ShellyLastReadTimeText = status.ReadAtTimeText;
+        ShellyLastReadTooltipText =
+            $"Senast läst: {status.ReadAtTooltipText}";
+    }
+
+    /// <summary>
+    /// Returnerar true när alla obligatoriska Shelly Cloud-inställningar finns.
+    /// </summary>
+    private bool HasShellyConfiguration()
+    {
+        return
+            !string.IsNullOrWhiteSpace(ShellyCloudServer) &&
+            !string.IsNullOrWhiteSpace(ShellyCloudAuthKey) &&
+            !string.IsNullOrWhiteSpace(ShellyDeviceId);
     }
 
     /// <summary>

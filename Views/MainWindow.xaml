@@ -153,6 +153,27 @@
                                             Command="{Binding FetchPricesCommand}"
                                             Style="{StaticResource PrimaryButton}" />
 
+                                    <Button Content="Läs Shelly-status"
+                                            Command="{Binding ReadShellyStatusCommand}" />
+
+                                    <Grid Margin="0,4,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+
+                                        <Button Grid.Column="0"
+                                                Content="Pump PÅ"
+                                                Command="{Binding TurnShellyOnCommand}"
+                                                Style="{StaticResource PrimaryButton}"
+                                                Margin="0,4,4,4" />
+
+                                        <Button Grid.Column="1"
+                                                Content="Pump AV"
+                                                Command="{Binding TurnShellyOffCommand}"
+                                                Margin="4,4,0,4" />
+                                    </Grid>
+
                                     <Button Content="Inställningar"
                                             Click="SettingsButton_Click" />
 
@@ -172,6 +193,7 @@
                   Margin="18">
 
                 <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="52" />
                     <RowDefinition Height="*" />
@@ -278,8 +300,92 @@
 
                 </UniformGrid>
 
+                <!-- SHELLY-STATUS -->
+                <UniformGrid Grid.Row="1"
+                             Columns="6"
+                             Margin="0,0,0,12">
+
+                    <Border Style="{StaticResource Card}">
+                        <StackPanel>
+                            <TextBlock Text="Shelly"
+                                       Style="{StaticResource MutedText}" />
+                            <TextBlock Text="{Binding ShellyOnlineText}"
+                                       Style="{StaticResource CardValueSmall}" />
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource Card}">
+                        <StackPanel>
+                            <TextBlock Text="Pump"
+                                       Style="{StaticResource MutedText}" />
+                            <TextBlock Text="{Binding ShellyOutputText}"
+                                       Style="{StaticResource CardValueSmall}" />
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource Card}">
+                        <StackPanel>
+                            <TextBlock Text="Effekt"
+                                       Style="{StaticResource MutedText}" />
+                            <TextBlock Text="{Binding ShellyPowerText}"
+                                       Style="{StaticResource CardValueSmall}" />
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource Card}">
+                        <StackPanel>
+                            <TextBlock Text="Spänning / ström"
+                                       Style="{StaticResource MutedText}" />
+                            <TextBlock Text="{Binding ShellyVoltageText}"
+                                       Style="{StaticResource CardValueSmall}" />
+                            <TextBlock Text="{Binding ShellyCurrentText}"
+                                       Foreground="{StaticResource BrushTextMuted}"
+                                       FontSize="11"
+                                       Margin="0,2,0,0" />
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource Card}">
+                        <StackPanel>
+                            <TextBlock Text="Ackumulerad ON-tid"
+                                       Style="{StaticResource MutedText}" />
+                            <TextBlock Text="{Binding ShellyOnTimeText}"
+                                       Style="{StaticResource CardValueSmall}" />
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource Card}">
+                        <Border.ToolTip>
+                            <ToolTip>
+                                <StackPanel MinWidth="210">
+                                    <TextBlock Text="Senast läst från Shelly"
+                                               Foreground="{StaticResource BrushText}"
+                                               FontWeight="SemiBold"
+                                               FontSize="13" />
+                                    <TextBlock Text="{Binding ShellyLastReadTooltipText}"
+                                               Foreground="{StaticResource BrushTextMuted}"
+                                               FontSize="12"
+                                               Margin="0,6,0,0" />
+                                </StackPanel>
+                            </ToolTip>
+                        </Border.ToolTip>
+
+                        <StackPanel>
+                            <TextBlock Text="Starter / status läst"
+                                       Style="{StaticResource MutedText}" />
+                            <TextBlock Text="{Binding ShellySwitchOnCountText}"
+                                       Style="{StaticResource CardValueSmall}" />
+                            <TextBlock Text="{Binding ShellyLastReadTimeText}"
+                                       Foreground="{StaticResource BrushTextMuted}"
+                                       FontSize="11"
+                                       Margin="0,2,0,0" />
+                        </StackPanel>
+                    </Border>
+
+                </UniformGrid>
+
                 <!-- EGEN FLIKHEADER -->
-                <StackPanel Grid.Row="1"
+                <StackPanel Grid.Row="2"
                             Orientation="Horizontal"
                             VerticalAlignment="Center"
                             Margin="0,0,0,10">
@@ -305,7 +411,7 @@
                 </StackPanel>
 
                 <!-- FLIKINNEHÅLL -->
-                <Grid Grid.Row="2">
+                <Grid Grid.Row="3">
 
                     <!-- PLAN -->
                     <Grid Visibility="{Binding IsPlanVisible,
