@@ -25,9 +25,10 @@ public sealed class MainViewModel : ObservableObject
     private string _averageRunPriceText = "-";
     private string _lastUpdatedTimeText = "-";
     private string _lastUpdatedTooltipText = "Ingen uppdatering ännu.";
-    private Brush _lastUpdatedBrush = new SolidColorBrush(Color.FromRgb(242, 245, 248));
 
-    private DateTime? _lastUpdated;
+    private Brush _lastUpdatedBrush =
+        new SolidColorBrush(Color.FromRgb(242, 245, 248));
+
     private TibberHome? _selectedHome;
     private string _selectedDayFilter = "Alla";
 
@@ -35,41 +36,65 @@ public sealed class MainViewModel : ObservableObject
     private decimal _preferredBlockHours;
     private decimal _maxStartsPerDay;
     private decimal _cheapPriceThresholdSekPerKwh;
+    private decimal _minExtraCheapBlockMinutes;
     private decimal _minOnMinutes;
     private decimal _minOffMinutes;
 
     private bool _isInitialized;
+
     private bool _isPlanTabSelected = true;
     private bool _isDetailsTabSelected;
     private bool _isLogTabSelected;
 
+    /// <summary>
+    /// Skapar huvud-vyns ViewModel och laddar sparad konfiguration.
+    /// </summary>
     public MainViewModel()
     {
         _config = _settingsService.Load();
 
-        TibberToken = _config.TibberToken;
-        UseProxy = _config.UseProxy;
-        ProxyAddress = _config.ProxyAddress ?? "";
+        _minRunHoursPerDay =
+            _config.MinRunHoursPerDay;
 
-        _minRunHoursPerDay = _config.MinRunHoursPerDay;
-        _preferredBlockHours = _config.PreferredBlockHours;
-        _maxStartsPerDay = _config.MaxStartsPerDay;
-        _cheapPriceThresholdSekPerKwh = _config.CheapPriceThresholdSekPerKwh;
-        _minOnMinutes = _config.MinOnMinutes;
-        _minOffMinutes = _config.MinOffMinutes;
+        _preferredBlockHours =
+            _config.PreferredBlockHours;
 
-        IgnorePastSlots = _config.IgnorePastSlots;
+        _maxStartsPerDay =
+            _config.MaxStartsPerDay;
+
+        _cheapPriceThresholdSekPerKwh =
+            _config.CheapPriceThresholdSekPerKwh;
+
+        _minExtraCheapBlockMinutes =
+            _config.MinExtraCheapBlockMinutes;
+
+        _minOnMinutes =
+            _config.MinOnMinutes;
+
+        _minOffMinutes =
+            _config.MinOffMinutes;
 
         DayFilters.Add("Alla");
         DayFilters.Add("Idag");
         DayFilters.Add("Imorgon");
 
-        LoadHomesCommand = new RelayCommand(LoadHomesAsync);
-        FetchPricesCommand = new RelayCommand(FetchPricesAsync);
-        OptimizeCommand = new RelayCommand(OptimizeAsync);
-        SaveSettingsCommand = new RelayCommand(SaveSettingsAsync);
-        LoadSettingsCommand = new RelayCommand(LoadSettingsAsync);
-        ClearLogCommand = new RelayCommand(ClearLogAsync);
+        LoadHomesCommand =
+            new RelayCommand(LoadHomesAsync);
+
+        FetchPricesCommand =
+            new RelayCommand(FetchPricesAsync);
+
+        OptimizeCommand =
+            new RelayCommand(OptimizeAsync);
+
+        SaveSettingsCommand =
+            new RelayCommand(SaveSettingsAsync);
+
+        LoadSettingsCommand =
+            new RelayCommand(LoadSettingsAsync);
+
+        ClearLogCommand =
+            new RelayCommand(ClearLogAsync);
 
         PriceSeries = Array.Empty<ISeries>();
 
@@ -79,8 +104,12 @@ public sealed class MainViewModel : ObservableObject
             {
                 LabelsRotation = 45,
                 TextSize = 11,
-                LabelsPaint = new SolidColorPaint(new SKColor(205, 213, 225)),
-                SeparatorsPaint = new SolidColorPaint(new SKColor(52, 58, 70))
+                LabelsPaint =
+                    new SolidColorPaint(
+                        new SKColor(205, 213, 225)),
+                SeparatorsPaint =
+                    new SolidColorPaint(
+                        new SKColor(52, 58, 70))
             }
         ];
 
@@ -90,13 +119,22 @@ public sealed class MainViewModel : ObservableObject
             {
                 Name = "SEK/kWh",
                 TextSize = 11,
-                LabelsPaint = new SolidColorPaint(new SKColor(205, 213, 225)),
-                SeparatorsPaint = new SolidColorPaint(new SKColor(52, 58, 70))
+                LabelsPaint =
+                    new SolidColorPaint(
+                        new SKColor(205, 213, 225)),
+                SeparatorsPaint =
+                    new SolidColorPaint(
+                        new SKColor(52, 58, 70))
             }
         ];
 
-        AddLog("Info", "Applikationen startades.");
-        AddLog("Info", $"Inställningsfil: {_settingsService.SettingsPath}");
+        AddLog(
+            "Info",
+            "Applikationen startades.");
+
+        AddLog(
+            "Info",
+            $"Inställningsfil: {_settingsService.SettingsPath}");
     }
 
     public ObservableCollection<TibberHome> Homes { get; } = new();
@@ -130,10 +168,15 @@ public sealed class MainViewModel : ObservableObject
     public bool IsPlanTabSelected
     {
         get => _isPlanTabSelected;
+
         set
         {
-            if (!SetProperty(ref _isPlanTabSelected, value))
+            if (!SetProperty(
+                    ref _isPlanTabSelected,
+                    value))
+            {
                 return;
+            }
 
             if (value)
             {
@@ -150,10 +193,15 @@ public sealed class MainViewModel : ObservableObject
     public bool IsDetailsTabSelected
     {
         get => _isDetailsTabSelected;
+
         set
         {
-            if (!SetProperty(ref _isDetailsTabSelected, value))
+            if (!SetProperty(
+                    ref _isDetailsTabSelected,
+                    value))
+            {
                 return;
+            }
 
             if (value)
             {
@@ -170,10 +218,15 @@ public sealed class MainViewModel : ObservableObject
     public bool IsLogTabSelected
     {
         get => _isLogTabSelected;
+
         set
         {
-            if (!SetProperty(ref _isLogTabSelected, value))
+            if (!SetProperty(
+                    ref _isLogTabSelected,
+                    value))
+            {
                 return;
+            }
 
             if (value)
             {
@@ -187,21 +240,26 @@ public sealed class MainViewModel : ObservableObject
         }
     }
 
-    public bool IsPlanVisible => IsPlanTabSelected;
+    public bool IsPlanVisible =>
+        IsPlanTabSelected;
 
-    public bool IsDetailsVisible => IsDetailsTabSelected;
+    public bool IsDetailsVisible =>
+        IsDetailsTabSelected;
 
-    public bool IsLogVisible => IsLogTabSelected;
+    public bool IsLogVisible =>
+        IsLogTabSelected;
 
     public string TibberToken
     {
         get => _config.TibberToken;
+
         set
         {
             if (_config.TibberToken == value)
                 return;
 
             _config.TibberToken = value;
+
             OnPropertyChanged();
         }
     }
@@ -209,12 +267,14 @@ public sealed class MainViewModel : ObservableObject
     public bool UseProxy
     {
         get => _config.UseProxy;
+
         set
         {
             if (_config.UseProxy == value)
                 return;
 
             _config.UseProxy = value;
+
             OnPropertyChanged();
         }
     }
@@ -222,12 +282,14 @@ public sealed class MainViewModel : ObservableObject
     public string ProxyAddress
     {
         get => _config.ProxyAddress ?? "";
+
         set
         {
             if (_config.ProxyAddress == value)
                 return;
 
             _config.ProxyAddress = value;
+
             OnPropertyChanged();
         }
     }
@@ -235,12 +297,18 @@ public sealed class MainViewModel : ObservableObject
     public decimal MinRunHoursPerDay
     {
         get => _minRunHoursPerDay;
+
         set
         {
-            var clamped = Clamp(value, 1m, 24m);
+            var clamped =
+                Clamp(value, 1m, 24m);
 
-            if (!SetProperty(ref _minRunHoursPerDay, clamped))
+            if (!SetProperty(
+                    ref _minRunHoursPerDay,
+                    clamped))
+            {
                 return;
+            }
 
             ReoptimizeIfPossible();
         }
@@ -249,12 +317,18 @@ public sealed class MainViewModel : ObservableObject
     public decimal PreferredBlockHours
     {
         get => _preferredBlockHours;
+
         set
         {
-            var clamped = Clamp(value, 1m, 24m);
+            var clamped =
+                Clamp(value, 1m, 24m);
 
-            if (!SetProperty(ref _preferredBlockHours, clamped))
+            if (!SetProperty(
+                    ref _preferredBlockHours,
+                    clamped))
+            {
                 return;
+            }
 
             ReoptimizeIfPossible();
         }
@@ -263,12 +337,18 @@ public sealed class MainViewModel : ObservableObject
     public decimal MaxStartsPerDay
     {
         get => _maxStartsPerDay;
+
         set
         {
-            var clamped = Clamp(value, 1m, 24m);
+            var clamped =
+                Clamp(value, 1m, 24m);
 
-            if (!SetProperty(ref _maxStartsPerDay, clamped))
+            if (!SetProperty(
+                    ref _maxStartsPerDay,
+                    clamped))
+            {
                 return;
+            }
 
             ReoptimizeIfPossible();
         }
@@ -277,12 +357,42 @@ public sealed class MainViewModel : ObservableObject
     public decimal CheapPriceThresholdSekPerKwh
     {
         get => _cheapPriceThresholdSekPerKwh;
+
         set
         {
-            var clamped = Clamp(value, -10m, 20m);
+            var clamped =
+                Clamp(value, -10m, 20m);
 
-            if (!SetProperty(ref _cheapPriceThresholdSekPerKwh, clamped))
+            if (!SetProperty(
+                    ref _cheapPriceThresholdSekPerKwh,
+                    clamped))
+            {
                 return;
+            }
+
+            ReoptimizeIfPossible();
+        }
+    }
+
+    /// <summary>
+    /// Minsta sammanhängande extra billiga period som får
+    /// skapa ett nytt fristående körblock.
+    /// </summary>
+    public decimal MinExtraCheapBlockMinutes
+    {
+        get => _minExtraCheapBlockMinutes;
+
+        set
+        {
+            var clamped =
+                Clamp(value, 15m, 1440m);
+
+            if (!SetProperty(
+                    ref _minExtraCheapBlockMinutes,
+                    clamped))
+            {
+                return;
+            }
 
             ReoptimizeIfPossible();
         }
@@ -291,12 +401,18 @@ public sealed class MainViewModel : ObservableObject
     public decimal MinOnMinutes
     {
         get => _minOnMinutes;
+
         set
         {
-            var clamped = Clamp(value, 15m, 1440m);
+            var clamped =
+                Clamp(value, 15m, 1440m);
 
-            if (!SetProperty(ref _minOnMinutes, clamped))
+            if (!SetProperty(
+                    ref _minOnMinutes,
+                    clamped))
+            {
                 return;
+            }
 
             ReoptimizeIfPossible();
         }
@@ -305,12 +421,18 @@ public sealed class MainViewModel : ObservableObject
     public decimal MinOffMinutes
     {
         get => _minOffMinutes;
+
         set
         {
-            var clamped = Clamp(value, 15m, 1440m);
+            var clamped =
+                Clamp(value, 15m, 1440m);
 
-            if (!SetProperty(ref _minOffMinutes, clamped))
+            if (!SetProperty(
+                    ref _minOffMinutes,
+                    clamped))
+            {
                 return;
+            }
 
             ReoptimizeIfPossible();
         }
@@ -319,13 +441,16 @@ public sealed class MainViewModel : ObservableObject
     public bool IgnorePastSlots
     {
         get => _config.IgnorePastSlots;
+
         set
         {
             if (_config.IgnorePastSlots == value)
                 return;
 
             _config.IgnorePastSlots = value;
+
             OnPropertyChanged();
+
             ReoptimizeIfPossible();
         }
     }
@@ -333,18 +458,32 @@ public sealed class MainViewModel : ObservableObject
     public TibberHome? SelectedHome
     {
         get => _selectedHome;
+
         set
         {
-            if (!SetProperty(ref _selectedHome, value))
+            if (!SetProperty(
+                    ref _selectedHome,
+                    value))
+            {
                 return;
+            }
 
-            _config.PreferredTibberHomeId = value?.Id;
-            SelectedHomeText = value?.NicknameText ?? "-";
+            _config.PreferredTibberHomeId =
+                value?.Id;
+
+            _config.PreferredTibberHomeNickname =
+                value?.AppNickname;
+
+            SelectedHomeText =
+                value?.NicknameText ?? "-";
 
             if (_isInitialized && value != null)
             {
                 SaveSelectedHomeQuietly();
-                AddLog("Info", $"Valt home: {value.NicknameText}");
+
+                AddLog(
+                    "Info",
+                    $"Valt home: {value.NicknameText}");
             }
         }
     }
@@ -352,10 +491,15 @@ public sealed class MainViewModel : ObservableObject
     public string SelectedDayFilter
     {
         get => _selectedDayFilter;
+
         set
         {
-            if (!SetProperty(ref _selectedDayFilter, value))
+            if (!SetProperty(
+                    ref _selectedDayFilter,
+                    value))
+            {
                 return;
+            }
 
             RefreshVisiblePlan();
         }
@@ -364,57 +508,97 @@ public sealed class MainViewModel : ObservableObject
     public string StatusText
     {
         get => _statusText;
-        private set => SetProperty(ref _statusText, value);
+
+        private set =>
+            SetProperty(
+                ref _statusText,
+                value);
     }
 
     public string SelectedHomeText
     {
         get => _selectedHomeText;
-        private set => SetProperty(ref _selectedHomeText, value);
+
+        private set =>
+            SetProperty(
+                ref _selectedHomeText,
+                value);
     }
 
     public string TodayRunText
     {
         get => _todayRunText;
-        private set => SetProperty(ref _todayRunText, value);
+
+        private set =>
+            SetProperty(
+                ref _todayRunText,
+                value);
     }
 
     public string TomorrowRunText
     {
         get => _tomorrowRunText;
-        private set => SetProperty(ref _tomorrowRunText, value);
+
+        private set =>
+            SetProperty(
+                ref _tomorrowRunText,
+                value);
     }
 
     public string TodayStartsText
     {
         get => _todayStartsText;
-        private set => SetProperty(ref _todayStartsText, value);
+
+        private set =>
+            SetProperty(
+                ref _todayStartsText,
+                value);
     }
 
     public string AverageRunPriceText
     {
         get => _averageRunPriceText;
-        private set => SetProperty(ref _averageRunPriceText, value);
+
+        private set =>
+            SetProperty(
+                ref _averageRunPriceText,
+                value);
     }
 
     public string LastUpdatedTimeText
     {
         get => _lastUpdatedTimeText;
-        private set => SetProperty(ref _lastUpdatedTimeText, value);
+
+        private set =>
+            SetProperty(
+                ref _lastUpdatedTimeText,
+                value);
     }
 
     public string LastUpdatedTooltipText
     {
         get => _lastUpdatedTooltipText;
-        private set => SetProperty(ref _lastUpdatedTooltipText, value);
+
+        private set =>
+            SetProperty(
+                ref _lastUpdatedTooltipText,
+                value);
     }
 
     public Brush LastUpdatedBrush
     {
         get => _lastUpdatedBrush;
-        private set => SetProperty(ref _lastUpdatedBrush, value);
+
+        private set =>
+            SetProperty(
+                ref _lastUpdatedBrush,
+                value);
     }
 
+    /// <summary>
+    /// Initierar applikationen efter att huvudfönstret har laddats.
+    /// Om en Tibber-token finns laddas Tibber homes automatiskt.
+    /// </summary>
     public async Task InitializeAsync()
     {
         if (_isInitialized)
@@ -424,95 +608,150 @@ public sealed class MainViewModel : ObservableObject
 
         if (string.IsNullOrWhiteSpace(TibberToken))
         {
-            SetStatus("Redo. Ange Tibber-token i inställningar.", "Info");
+            SetStatus(
+                "Redo. Ange Tibber-token i inställningar.",
+                "Info");
+
             return;
         }
 
-        SetStatus("Token hittad. Laddar Tibber homes automatiskt...", "Info");
+        SetStatus(
+            "Token hittad. Laddar Tibber homes automatiskt...",
+            "Info");
 
         await LoadHomesAsync();
     }
 
+    /// <summary>
+    /// Hämtar tillgängliga Tibber homes och återställer tidigare valt home.
+    /// </summary>
     private async Task LoadHomesAsync()
     {
         try
         {
-            SetStatus("Laddar Tibber homes...", "Info");
+            SetStatus(
+                "Laddar Tibber homes...",
+                "Info");
 
             UpdateConfigFromUi();
 
-            var client = new TibberClient(_config);
-            var homes = await client.GetHomesAsync();
+            var client =
+                new TibberClient(_config);
+
+            var homes =
+                await client.GetHomesAsync();
 
             Homes.Clear();
 
             foreach (var home in homes)
+            {
                 Homes.Add(home);
+            }
 
             SelectedHome =
-                Homes.FirstOrDefault(x => x.Id == _config.PreferredTibberHomeId)
-                ?? Homes.FirstOrDefault(x => x.HasCurrentSubscription)
+                Homes.FirstOrDefault(
+                    x => x.Id ==
+                         _config.PreferredTibberHomeId)
+                ?? Homes.FirstOrDefault(
+                    x => string.Equals(
+                        x.AppNickname,
+                        _config.PreferredTibberHomeNickname,
+                        StringComparison.OrdinalIgnoreCase))
+                ?? Homes.FirstOrDefault(
+                    x => x.HasCurrentSubscription)
                 ?? Homes.FirstOrDefault();
 
-            SetStatus($"Laddade {Homes.Count} Tibber home(s).", "OK");
+            SetStatus(
+                $"Laddade {Homes.Count} Tibber home(s).",
+                "OK");
         }
         catch (Exception ex)
         {
-            SetStatus(ex.Message, "Fel");
+            SetStatus(
+                ex.Message,
+                "Fel");
         }
     }
 
+    /// <summary>
+    /// Hämtar kvartstidspriser från Tibber och kör därefter optimeringen.
+    /// </summary>
     private async Task FetchPricesAsync()
     {
         try
         {
-            SetStatus("Hämtar Tibber-priser...", "Info");
+            SetStatus(
+                "Hämtar Tibber-priser...",
+                "Info");
 
             UpdateConfigFromUi();
 
-            var client = new TibberClient(_config);
-            _prices = await client.GetQuarterPricesAsync();
+            var client =
+                new TibberClient(_config);
+
+            _prices =
+                await client.GetQuarterPricesAsync();
 
             SetLastUpdated(DateTime.Now);
 
-            SetStatus($"Hämtade {_prices.Count} prisrader.", "OK");
+            SetStatus(
+                $"Hämtade {_prices.Count} prisrader.",
+                "OK");
 
             await OptimizeAsync();
         }
         catch (Exception ex)
         {
-            SetStatus(ex.Message, "Fel");
+            SetStatus(
+                ex.Message,
+                "Fel");
         }
     }
 
+    /// <summary>
+    /// Kör om optimeringen med aktuella priser och UI-inställningar.
+    /// </summary>
     private Task OptimizeAsync()
     {
         try
         {
             if (_prices.Count == 0)
             {
-                SetStatus("Inga priser laddade. Hämta priser först.", "Varning");
+                SetStatus(
+                    "Inga priser laddade. Hämta priser först.",
+                    "Varning");
+
                 return Task.CompletedTask;
             }
 
             UpdateConfigFromUi();
 
-            var optimizer = new Services.PoolPumpOptimizer(_config);
-            _fullPlan = optimizer.BuildPlan(_prices);
+            var optimizer =
+                new Services.PoolPumpOptimizer(_config);
+
+            _fullPlan =
+                optimizer.BuildPlan(_prices);
 
             RefreshVisiblePlan();
             UpdateSummary();
 
-            SetStatus("Optimering klar.", "OK");
+            SetStatus(
+                "Optimering klar.",
+                "OK");
         }
         catch (Exception ex)
         {
-            SetStatus(ex.Message, "Fel");
+            SetStatus(
+                ex.Message,
+                "Fel");
         }
 
         return Task.CompletedTask;
     }
 
+    /// <summary>
+    /// Sparar aktuell konfiguration till settings.json.
+    /// </summary>
     private Task SaveSettingsAsync()
     {
         try
@@ -521,100 +760,220 @@ public sealed class MainViewModel : ObservableObject
 
             _settingsService.Save(_config);
 
-            SetStatus($"Inställningar sparade: {_settingsService.SettingsPath}", "OK");
+            SetStatus(
+                $"Inställningar sparade: {_settingsService.SettingsPath}",
+                "OK");
         }
         catch (Exception ex)
         {
-            SetStatus(ex.Message, "Fel");
+            SetStatus(
+                ex.Message,
+                "Fel");
         }
 
         return Task.CompletedTask;
     }
 
+    /// <summary>
+    /// Läser om konfigurationen från settings.json.
+    /// </summary>
     private Task LoadSettingsAsync()
     {
         try
         {
-            _config = _settingsService.Load();
+            var loadedConfig =
+                _settingsService.Load();
 
-            TibberToken = _config.TibberToken;
-            UseProxy = _config.UseProxy;
-            ProxyAddress = _config.ProxyAddress ?? "";
-
-            MinRunHoursPerDay = _config.MinRunHoursPerDay;
-            PreferredBlockHours = _config.PreferredBlockHours;
-            MaxStartsPerDay = _config.MaxStartsPerDay;
-            CheapPriceThresholdSekPerKwh = _config.CheapPriceThresholdSekPerKwh;
-            MinOnMinutes = _config.MinOnMinutes;
-            MinOffMinutes = _config.MinOffMinutes;
-            IgnorePastSlots = _config.IgnorePastSlots;
+            ApplyLoadedConfig(loadedConfig);
 
             SelectedHome =
-                Homes.FirstOrDefault(x => x.Id == _config.PreferredTibberHomeId)
+                Homes.FirstOrDefault(
+                    x => x.Id ==
+                         _config.PreferredTibberHomeId)
                 ?? SelectedHome;
 
-            SetStatus("Inställningar laddade.", "OK");
+            SetStatus(
+                "Inställningar laddade.",
+                "OK");
         }
         catch (Exception ex)
         {
-            SetStatus(ex.Message, "Fel");
+            SetStatus(
+                ex.Message,
+                "Fel");
         }
 
         return Task.CompletedTask;
     }
 
+    /// <summary>
+    /// Rensar statusloggen.
+    /// </summary>
     private Task ClearLogAsync()
     {
         LogEntries.Clear();
-        AddLog("Info", "Loggen rensades.");
+
+        AddLog(
+            "Info",
+            "Loggen rensades.");
 
         return Task.CompletedTask;
     }
 
+    /// <summary>
+    /// Applicerar en inläst konfiguration och uppdaterar alla UI-properties.
+    /// </summary>
+    private void ApplyLoadedConfig(
+        PoolPumpConfig loadedConfig)
+    {
+        _config = loadedConfig;
+
+        OnPropertyChanged(nameof(TibberToken));
+        OnPropertyChanged(nameof(UseProxy));
+        OnPropertyChanged(nameof(ProxyAddress));
+        OnPropertyChanged(nameof(IgnorePastSlots));
+
+        MinRunHoursPerDay =
+            _config.MinRunHoursPerDay;
+
+        PreferredBlockHours =
+            _config.PreferredBlockHours;
+
+        MaxStartsPerDay =
+            _config.MaxStartsPerDay;
+
+        CheapPriceThresholdSekPerKwh =
+            _config.CheapPriceThresholdSekPerKwh;
+
+        MinExtraCheapBlockMinutes =
+            _config.MinExtraCheapBlockMinutes;
+
+        MinOnMinutes =
+            _config.MinOnMinutes;
+
+        MinOffMinutes =
+            _config.MinOffMinutes;
+    }
+
+    /// <summary>
+    /// Sparar valt Tibber home utan att ändra huvudstatusen i UI:t.
+    /// </summary>
     private void SaveSelectedHomeQuietly()
     {
         try
         {
             UpdateConfigFromUi();
+
             _settingsService.Save(_config);
         }
         catch (Exception ex)
         {
-            AddLog("Fel", $"Kunde inte spara valt home: {ex.Message}");
+            AddLog(
+                "Fel",
+                $"Kunde inte spara valt home: {ex.Message}");
         }
     }
 
+    /// <summary>
+    /// Kopierar aktuella UI-värden till konfigurationsmodellen.
+    /// </summary>
     private void UpdateConfigFromUi()
     {
-        _config.TibberToken = TibberToken;
-        _config.UseProxy = UseProxy;
-        _config.ProxyAddress = ProxyAddress;
+        _config.MinRunHoursPerDay =
+            (int)Math.Round(
+                MinRunHoursPerDay,
+                MidpointRounding.AwayFromZero);
 
-        _config.MinRunHoursPerDay = (int)Math.Round(MinRunHoursPerDay);
-        _config.PreferredBlockHours = (int)Math.Round(PreferredBlockHours);
-        _config.MaxStartsPerDay = (int)Math.Round(MaxStartsPerDay);
+        _config.PreferredBlockHours =
+            (int)Math.Round(
+                PreferredBlockHours,
+                MidpointRounding.AwayFromZero);
 
-        _config.CheapPriceThresholdSekPerKwh = CheapPriceThresholdSekPerKwh;
+        _config.MaxStartsPerDay =
+            (int)Math.Round(
+                MaxStartsPerDay,
+                MidpointRounding.AwayFromZero);
 
-        _config.MinOnMinutes = (int)Math.Round(MinOnMinutes);
-        _config.MinOffMinutes = (int)Math.Round(MinOffMinutes);
+        _config.CheapPriceThresholdSekPerKwh =
+            CheapPriceThresholdSekPerKwh;
 
-        _config.IgnorePastSlots = IgnorePastSlots;
-        _config.PreferredTibberHomeId = SelectedHome?.Id ?? _config.PreferredTibberHomeId;
+        _config.MinExtraCheapBlockMinutes =
+            (int)Math.Round(
+                MinExtraCheapBlockMinutes,
+                MidpointRounding.AwayFromZero);
+
+        _config.MinOnMinutes =
+            (int)Math.Round(
+                MinOnMinutes,
+                MidpointRounding.AwayFromZero);
+
+        _config.MinOffMinutes =
+            (int)Math.Round(
+                MinOffMinutes,
+                MidpointRounding.AwayFromZero);
+
+        _config.PreferredTibberHomeId =
+            SelectedHome?.Id
+            ?? _config.PreferredTibberHomeId;
+
+        _config.PreferredTibberHomeNickname =
+            SelectedHome?.AppNickname
+            ?? _config.PreferredTibberHomeNickname;
 
         ValidateConfig();
     }
 
+    /// <summary>
+    /// Begränsar konfigurationsvärden till tillåtna intervall.
+    /// </summary>
     private void ValidateConfig()
     {
-        _config.MinRunHoursPerDay = Math.Clamp(_config.MinRunHoursPerDay, 1, 24);
-        _config.PreferredBlockHours = Math.Clamp(_config.PreferredBlockHours, 1, 24);
-        _config.MaxStartsPerDay = Math.Clamp(_config.MaxStartsPerDay, 1, 24);
-        _config.MinOnMinutes = Math.Clamp(_config.MinOnMinutes, 15, 1440);
-        _config.MinOffMinutes = Math.Clamp(_config.MinOffMinutes, 15, 1440);
-        _config.CheapPriceThresholdSekPerKwh = Math.Clamp(_config.CheapPriceThresholdSekPerKwh, -10m, 20m);
+        _config.MinRunHoursPerDay =
+            Math.Clamp(
+                _config.MinRunHoursPerDay,
+                1,
+                24);
+
+        _config.PreferredBlockHours =
+            Math.Clamp(
+                _config.PreferredBlockHours,
+                1,
+                24);
+
+        _config.MaxStartsPerDay =
+            Math.Clamp(
+                _config.MaxStartsPerDay,
+                1,
+                24);
+
+        _config.CheapPriceThresholdSekPerKwh =
+            Math.Clamp(
+                _config.CheapPriceThresholdSekPerKwh,
+                -10m,
+                20m);
+
+        _config.MinExtraCheapBlockMinutes =
+            Math.Clamp(
+                _config.MinExtraCheapBlockMinutes,
+                15,
+                1440);
+
+        _config.MinOnMinutes =
+            Math.Clamp(
+                _config.MinOnMinutes,
+                15,
+                1440);
+
+        _config.MinOffMinutes =
+            Math.Clamp(
+                _config.MinOffMinutes,
+                15,
+                1440);
     }
 
+    /// <summary>
+    /// Kör automatiskt om optimeringen när ett optimeringsvärde ändras.
+    /// </summary>
     private void ReoptimizeIfPossible()
     {
         if (_prices.Count == 0)
@@ -624,31 +983,44 @@ public sealed class MainViewModel : ObservableObject
         {
             UpdateConfigFromUi();
 
-            var optimizer = new Services.PoolPumpOptimizer(_config);
-            _fullPlan = optimizer.BuildPlan(_prices);
+            var optimizer =
+                new Services.PoolPumpOptimizer(_config);
+
+            _fullPlan =
+                optimizer.BuildPlan(_prices);
 
             RefreshVisiblePlan();
             UpdateSummary();
 
-            StatusText = "Optimerade automatiskt.";
+            StatusText =
+                "Optimerade automatiskt.";
         }
         catch (Exception ex)
         {
-            SetStatus(ex.Message, "Fel");
+            SetStatus(
+                ex.Message,
+                "Fel");
         }
     }
 
+    /// <summary>
+    /// Uppdaterar graf och tabeller utifrån valt dagfilter.
+    /// </summary>
     private void RefreshVisiblePlan()
     {
         if (_fullPlan == null)
             return;
 
-        var visiblePlan = GetVisiblePlan();
+        var visiblePlan =
+            GetVisiblePlan();
 
         UpdateTables(visiblePlan);
         UpdateChart(visiblePlan);
     }
 
+    /// <summary>
+    /// Returnerar den del av planen som motsvarar valt dagfilter.
+    /// </summary>
     private PumpPlan GetVisiblePlan()
     {
         if (_fullPlan == null)
@@ -659,8 +1031,12 @@ public sealed class MainViewModel : ObservableObject
             };
         }
 
-        var today = DateOnly.FromDateTime(DateTime.Now);
-        var tomorrow = today.AddDays(1);
+        var today =
+            DateOnly.FromDateTime(
+                DateTime.Now);
+
+        var tomorrow =
+            today.AddDays(1);
 
         if (SelectedDayFilter == "Idag")
             return _fullPlan.ForDate(today);
@@ -671,63 +1047,123 @@ public sealed class MainViewModel : ObservableObject
         return _fullPlan;
     }
 
-    private void UpdateTables(PumpPlan visiblePlan)
+    /// <summary>
+    /// Uppdaterar körblockstabellen och kvartstidsdetaljerna.
+    /// </summary>
+    private void UpdateTables(
+        PumpPlan visiblePlan)
     {
         RunBlocks.Clear();
         DetailSlots.Clear();
 
         foreach (var block in visiblePlan.GetRunBlocks())
+        {
             RunBlocks.Add(block);
+        }
 
-        foreach (var slot in visiblePlan.Slots.OrderBy(x => x.StartsAt))
+        foreach (var slot in
+                 visiblePlan.Slots.OrderBy(
+                     x => x.StartsAt))
+        {
             DetailSlots.Add(slot);
+        }
     }
 
+    /// <summary>
+    /// Uppdaterar sammanfattningskorten för idag och imorgon.
+    /// </summary>
     private void UpdateSummary()
     {
         if (_fullPlan == null)
             return;
 
-        var today = DateOnly.FromDateTime(DateTime.Now);
-        var tomorrow = today.AddDays(1);
+        var today =
+            DateOnly.FromDateTime(
+                DateTime.Now);
 
-        var todayPlan = _fullPlan.ForDate(today);
-        var tomorrowPlan = _fullPlan.ForDate(tomorrow);
+        var tomorrow =
+            today.AddDays(1);
 
-        TodayRunText = $"{todayPlan.TotalRunHours:0.00} h";
-        TomorrowRunText = $"{tomorrowPlan.TotalRunHours:0.00} h";
-        TodayStartsText = todayPlan.Starts.ToString();
-        AverageRunPriceText = $"{todayPlan.AverageRunPrice:0.000} SEK/kWh";
+        var todayPlan =
+            _fullPlan.ForDate(today);
+
+        var tomorrowPlan =
+            _fullPlan.ForDate(tomorrow);
+
+        TodayRunText =
+            $"{todayPlan.TotalRunHours:0.00} h";
+
+        TomorrowRunText =
+            $"{tomorrowPlan.TotalRunHours:0.00} h";
+
+        TodayStartsText =
+            todayPlan.Starts.ToString();
+
+        AverageRunPriceText =
+            $"{todayPlan.AverageRunPrice:0.000} SEK/kWh";
     }
 
-    private void UpdateChart(PumpPlan visiblePlan)
+    /// <summary>
+    /// Behålls för kompatibilitet med den tidigare LiveCharts-modellen.
+    /// Den egna PricePlanChart använder DetailSlots direkt.
+    /// </summary>
+    private void UpdateChart(
+        PumpPlan visiblePlan)
     {
-        PriceSeries = Array.Empty<ISeries>();
+        PriceSeries =
+            Array.Empty<ISeries>();
 
         OnPropertyChanged(nameof(PriceSeries));
         OnPropertyChanged(nameof(XAxes));
         OnPropertyChanged(nameof(YAxes));
     }
 
-    private void SetLastUpdated(DateTime value)
+    /// <summary>
+    /// Uppdaterar tid, tooltip och färg för senaste prisuppdatering.
+    /// </summary>
+    private void SetLastUpdated(
+        DateTime value)
     {
-        _lastUpdated = value;
+        LastUpdatedTimeText =
+            value.ToString("HH:mm:ss");
 
-        LastUpdatedTimeText = value.ToString("HH:mm:ss");
-        LastUpdatedTooltipText = $"Senast uppdaterad: {value:yyyy-MM-dd HH:mm:ss}";
+        LastUpdatedTooltipText =
+            value.ToString("yyyy-MM-dd HH:mm:ss");
 
-        LastUpdatedBrush = value.Date == DateTime.Today
-            ? new SolidColorBrush(Color.FromRgb(242, 245, 248))
-            : new SolidColorBrush(Color.FromRgb(255, 92, 122));
+        LastUpdatedBrush =
+            value.Date == DateTime.Today
+                ? new SolidColorBrush(
+                    Color.FromRgb(
+                        242,
+                        245,
+                        248))
+                : new SolidColorBrush(
+                    Color.FromRgb(
+                        255,
+                        92,
+                        122));
     }
 
-    private void SetStatus(string message, string level)
+    /// <summary>
+    /// Uppdaterar statusfältet och lägger samma information i loggen.
+    /// </summary>
+    private void SetStatus(
+        string message,
+        string level)
     {
         StatusText = message;
-        AddLog(level, message);
+
+        AddLog(
+            level,
+            message);
     }
 
-    private void AddLog(string level, string message)
+    /// <summary>
+    /// Lägger till en rad i statusloggen.
+    /// </summary>
+    private void AddLog(
+        string level,
+        string message)
     {
         LogEntries.Insert(
             0,
@@ -737,16 +1173,25 @@ public sealed class MainViewModel : ObservableObject
                 message));
 
         while (LogEntries.Count > 500)
-            LogEntries.RemoveAt(LogEntries.Count - 1);
+        {
+            LogEntries.RemoveAt(
+                LogEntries.Count - 1);
+        }
     }
 
-    private static decimal Clamp(decimal value, decimal min, decimal max)
+    /// <summary>
+    /// Begränsar ett decimalvärde till angivet intervall.
+    /// </summary>
+    private static decimal Clamp(
+        decimal value,
+        decimal minimum,
+        decimal maximum)
     {
-        if (value < min)
-            return min;
+        if (value < minimum)
+            return minimum;
 
-        if (value > max)
-            return max;
+        if (value > maximum)
+            return maximum;
 
         return value;
     }
