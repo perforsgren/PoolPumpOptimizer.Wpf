@@ -65,4 +65,15 @@ public sealed class PoolPumpConfig
     /// Automatisk planstyrning ingår inte i denna fas.
     /// </summary>
     public bool ShellyManualControlEnabled { get; set; }
+
+    /// <summary>
+    /// Tillåter automatisk styrning enligt den aktuella optimeringsplanen.
+    /// Styrningen måste ändå startas manuellt efter varje programstart.
+    /// </summary>
+    public bool ShellyAutomaticControlEnabled { get; set; }
+
+    /// <summary>
+    /// Intervall mellan automatiska kontrollcykler mot Shelly Cloud.
+    /// </summary>
+    public int ShellyControlPollSeconds { get; set; } = 30;
 }

@@ -105,11 +105,13 @@ public sealed class ShellyCloudClient : IDisposable
     /// Efter kommandot väntar metoden minst en sekund och läser tillbaka status
     /// för att verifiera att det begärda läget faktiskt har uppnåtts.
     /// </summary>
-    public async Task<ShellySwitchStatus> SetSwitchStateAsync(bool turnOn)
+    public async Task<ShellySwitchStatus> SetSwitchStateAsync(
+        bool turnOn,
+        ShellySwitchStatus? knownStatus = null)
     {
         ValidateConfiguration();
 
-        var currentStatus = await GetSwitchStatusAsync();
+        var currentStatus = knownStatus ?? await GetSwitchStatusAsync();
 
         if (!currentStatus.IsOnline)
         {
@@ -121,6 +123,8 @@ public sealed class ShellyCloudClient : IDisposable
             return currentStatus;
 
         // Shelly Cloud Control API är begränsat till ett anrop per sekund.
+        // Väntan behövs både när statusen lästes här och när anroparen
+        // skickade in en nyligen läst status.
         await Task.Delay(TimeSpan.FromMilliseconds(1100));
 
         var server = _config.ShellyCloudServer.Trim().TrimEnd('/');

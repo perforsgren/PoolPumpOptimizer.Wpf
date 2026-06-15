@@ -1,54 +1,14 @@
 <UserControl x:Class="PoolPumpOptimizer.Wpf.Views.PricePlanChart"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             MinHeight="260"
              Background="Transparent">
 
-    <Grid x:Name="Root"
-          Background="Transparent"
-          ClipToBounds="True"
-          SizeChanged="Root_SizeChanged"
-          MouseMove="Root_MouseMove"
-          MouseLeave="Root_MouseLeave">
-
-        <Canvas x:Name="ChartCanvas"
-                Background="Transparent" />
-
-        <Border x:Name="TooltipBorder"
-                Background="#F0202530"
-                BorderBrush="#566174"
-                BorderThickness="1"
-                CornerRadius="8"
-                Padding="10"
-                Visibility="Collapsed"
-                IsHitTestVisible="False"
-                HorizontalAlignment="Left"
-                VerticalAlignment="Top">
-
-            <StackPanel>
-                <TextBlock x:Name="TooltipTimeText"
-                           Foreground="#F2F5F8"
-                           FontWeight="SemiBold"
-                           FontSize="13" />
-
-                <TextBlock x:Name="TooltipPriceText"
-                           Foreground="#AAB3C2"
-                           FontSize="12"
-                           Margin="0,5,0,0" />
-
-                <TextBlock x:Name="TooltipStatusText"
-                           Foreground="#AAB3C2"
-                           FontSize="12"
-                           Margin="0,2,0,0" />
-
-                <TextBlock x:Name="TooltipReasonText"
-                           Foreground="#AAB3C2"
-                           FontSize="12"
-                           Margin="0,2,0,0"
-                           TextWrapping="Wrap"
-                           MaxWidth="260" />
-            </StackPanel>
-        </Border>
-
+    <Grid Background="Transparent">
+        <Canvas x:Name="PlotCanvas"
+                Background="Transparent"
+                ClipToBounds="True"
+                SnapsToDevicePixels="True"
+                MouseMove="PlotCanvas_MouseMove"
+                MouseLeave="PlotCanvas_MouseLeave" />
     </Grid>
 </UserControl>

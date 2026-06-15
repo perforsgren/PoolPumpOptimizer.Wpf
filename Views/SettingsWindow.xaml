@@ -103,6 +103,27 @@
                                    TextWrapping="Wrap"
                                    Margin="0,0,0,6" />
 
+                        <CheckBox Content="Tillåt automatisk styrning enligt planen"
+                                  IsChecked="{Binding ShellyAutomaticControlEnabled,
+                                                      Mode=TwoWay}"
+                                  Margin="0,8,0,4" />
+
+                        <TextBlock Text="Automatiken startas alltid manuellt efter programstart och gör inget om aktuell planslot saknas."
+                                   Foreground="{StaticResource BrushTextMuted}"
+                                   FontSize="11"
+                                   TextWrapping="Wrap"
+                                   Margin="0,0,0,6" />
+
+                        <views:NumberBox Label="Kontrollintervall"
+                                         Unit="sek"
+                                         Value="{Binding ShellyControlPollSeconds,
+                                                         Mode=TwoWay,
+                                                         UpdateSourceTrigger=PropertyChanged}"
+                                         Minimum="15"
+                                         Maximum="300"
+                                         Step="15"
+                                         Decimals="0" />
+
                         <Grid Margin="0,4,0,0">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />

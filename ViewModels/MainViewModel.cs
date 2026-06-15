@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Windows.Media;
+using System.Windows.Threading;
 using LiveChartsCore;
 using LiveChartsCore.SkiaSharpView;
 using LiveChartsCore.SkiaSharpView.Painting;
@@ -12,6 +13,13 @@ namespace PoolPumpOptimizer.Wpf.ViewModels;
 public sealed class MainViewModel : ObservableObject
 {
     private readonly SettingsService _settingsService = new();
+    private readonly PumpRuntimeStateService _pumpRuntimeStateService = new();
+    private readonly PumpRuntimeTracker _pumpRuntimeTracker;
+    private readonly DispatcherTimer _pumpRuntimeUiTimer;
+    private readonly DispatcherTimer _tibberPriceRefreshTimer;
+    private readonly SemaphoreSlim _tibberPriceRefreshGate = new(1, 1);
+
+    private string? _lastAutomaticPriceRefreshError;
 
     private PoolPumpConfig _config;
     private List<PriceSlot> _prices = new();
@@ -31,10 +39,16 @@ public sealed class MainViewModel : ObservableObject
     private string _shellyPowerText = "-";
     private string _shellyVoltageText = "-";
     private string _shellyCurrentText = "-";
-    private string _shellyOnTimeText = "-";
-    private string _shellySwitchOnCountText = "-";
+    private string _shellyOnTimeText = "00:00:00";
+    private string _shellySwitchOnCountText = "0";
+    private string _shellyRuntimeTooltipText =
+        "Egen statistik har ännu inte fått någon verifierad Shelly-status.";
     private string _shellyLastReadTimeText = "-";
     private string _shellyLastReadTooltipText = "Ingen Shelly-status har lästs ännu.";
+    private string _shellyControlModeText = "Stoppad";
+    private string _shellyPlanTargetText = "-";
+    private string _shellyNextChangeText = "-";
+    private string _shellyControlLastActionText = "Ingen automatisk åtgärd ännu.";
 
     private Brush _lastUpdatedBrush =
         new SolidColorBrush(Color.FromRgb(242, 245, 248));
@@ -50,8 +64,16 @@ public sealed class MainViewModel : ObservableObject
     private decimal _minOnMinutes;
     private decimal _minOffMinutes;
     private decimal _shellySwitchId;
+    private decimal _shellyControlPollSeconds;
 
     private bool _isInitialized;
+    private bool _isShellyAutomaticControlRunning;
+    private CancellationTokenSource? _shellyControlCancellation;
+    private readonly SemaphoreSlim _shellyControlGate = new(1, 1);
+
+    private int _shellyAutomaticConsecutiveFailures;
+    private string? _lastShellyAutomaticError;
+    private DateTime? _lastShellyAutomaticSuccessfulCycleLocal;
 
     private bool _isPlanTabSelected = true;
     private bool _isDetailsTabSelected;
@@ -63,6 +85,26 @@ public sealed class MainViewModel : ObservableObject
     public MainViewModel()
     {
         _config = _settingsService.Load();
+        _pumpRuntimeTracker =
+            new PumpRuntimeTracker(_pumpRuntimeStateService);
+
+        _pumpRuntimeUiTimer = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromSeconds(1)
+        };
+
+        _pumpRuntimeUiTimer.Tick += (_, _) =>
+            RefreshPumpRuntimeDisplay();
+
+        _pumpRuntimeUiTimer.Start();
+
+        _tibberPriceRefreshTimer = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromMinutes(5)
+        };
+
+        _tibberPriceRefreshTimer.Tick +=
+            TibberPriceRefreshTimer_Tick;
 
         _minRunHoursPerDay =
             _config.MinRunHoursPerDay;
@@ -87,6 +129,9 @@ public sealed class MainViewModel : ObservableObject
 
         _shellySwitchId =
             _config.ShellySwitchId;
+
+        _shellyControlPollSeconds =
+            _config.ShellyControlPollSeconds;
 
         DayFilters.Add("Alla");
         DayFilters.Add("Idag");
@@ -121,6 +166,12 @@ public sealed class MainViewModel : ObservableObject
 
         TurnShellyOffCommand =
             new RelayCommand(TurnShellyOffAsync);
+
+        StartShellyAutomaticControlCommand =
+            new RelayCommand(StartShellyAutomaticControlAsync);
+
+        StopShellyAutomaticControlCommand =
+            new RelayCommand(StopShellyAutomaticControlAsync);
 
         PriceSeries = Array.Empty<ISeries>();
 
@@ -158,9 +209,18 @@ public sealed class MainViewModel : ObservableObject
             "Info",
             "Applikationen startades.");
 
+        ApplyPumpRuntimeSnapshot(
+            _pumpRuntimeTracker.GetSnapshot(
+                _config.ShellyDeviceId,
+                _config.ShellySwitchId));
+
         AddLog(
             "Info",
             $"Inställningsfil: {_settingsService.SettingsPath}");
+
+        AddLog(
+            "Info",
+            $"Driftstatusfil: {_pumpRuntimeStateService.StatePath}");
     }
 
     public ObservableCollection<TibberHome> Homes { get; } = new();
@@ -192,6 +252,10 @@ public sealed class MainViewModel : ObservableObject
     public RelayCommand TurnShellyOnCommand { get; }
 
     public RelayCommand TurnShellyOffCommand { get; }
+
+    public RelayCommand StartShellyAutomaticControlCommand { get; }
+
+    public RelayCommand StopShellyAutomaticControlCommand { get; }
 
     public ISeries[] PriceSeries { get; private set; }
 
@@ -394,6 +458,33 @@ public sealed class MainViewModel : ObservableObject
 
             _config.ShellyManualControlEnabled = value;
             OnPropertyChanged();
+        }
+    }
+
+    public bool ShellyAutomaticControlEnabled
+    {
+        get => _config.ShellyAutomaticControlEnabled;
+
+        set
+        {
+            if (_config.ShellyAutomaticControlEnabled == value)
+                return;
+
+            _config.ShellyAutomaticControlEnabled = value;
+            OnPropertyChanged();
+        }
+    }
+
+    public decimal ShellyControlPollSeconds
+    {
+        get => _shellyControlPollSeconds;
+
+        set
+        {
+            var clamped = Clamp(value, 15m, 300m);
+
+            if (!SetProperty(ref _shellyControlPollSeconds, clamped))
+                return;
         }
     }
 
@@ -740,6 +831,12 @@ public sealed class MainViewModel : ObservableObject
         private set => SetProperty(ref _shellySwitchOnCountText, value);
     }
 
+    public string ShellyRuntimeTooltipText
+    {
+        get => _shellyRuntimeTooltipText;
+        private set => SetProperty(ref _shellyRuntimeTooltipText, value);
+    }
+
     public string ShellyLastReadTimeText
     {
         get => _shellyLastReadTimeText;
@@ -750,6 +847,42 @@ public sealed class MainViewModel : ObservableObject
     {
         get => _shellyLastReadTooltipText;
         private set => SetProperty(ref _shellyLastReadTooltipText, value);
+    }
+
+    public string ShellyControlModeText
+    {
+        get => _shellyControlModeText;
+        private set => SetProperty(ref _shellyControlModeText, value);
+    }
+
+    public string ShellyPlanTargetText
+    {
+        get => _shellyPlanTargetText;
+        private set => SetProperty(ref _shellyPlanTargetText, value);
+    }
+
+    public string ShellyNextChangeText
+    {
+        get => _shellyNextChangeText;
+        private set => SetProperty(ref _shellyNextChangeText, value);
+    }
+
+    public string ShellyControlLastActionText
+    {
+        get => _shellyControlLastActionText;
+        private set => SetProperty(ref _shellyControlLastActionText, value);
+    }
+
+    public bool IsShellyAutomaticControlRunning
+    {
+        get => _isShellyAutomaticControlRunning;
+        private set
+        {
+            if (!SetProperty(ref _isShellyAutomaticControlRunning, value))
+                return;
+
+            ShellyControlModeText = value ? "Automatik aktiv" : "Stoppad";
+        }
     }
 
     /// <summary>
@@ -768,10 +901,16 @@ public sealed class MainViewModel : ObservableObject
         if (!string.IsNullOrWhiteSpace(TibberToken))
         {
             SetStatus(
-                "Token hittad. Laddar Tibber homes automatiskt...",
+                "Token hittad. Laddar Tibber homes och priser automatiskt...",
                 "Info");
 
             await LoadHomesAsync();
+
+            await RefreshTibberPricesAsync(
+                isAutomatic: true,
+                forceOptimization: true);
+
+            _tibberPriceRefreshTimer.Start();
             initializedSomething = true;
         }
 
@@ -845,34 +984,156 @@ public sealed class MainViewModel : ObservableObject
     /// </summary>
     private async Task FetchPricesAsync()
     {
+        await RefreshTibberPricesAsync(
+            isAutomatic: false,
+            forceOptimization: true);
+    }
+
+    /// <summary>
+    /// Körs regelbundet medan applikationen är öppen och kontrollerar
+    /// om Tibber har publicerat nya eller ändrade prisrader.
+    /// </summary>
+    private async void TibberPriceRefreshTimer_Tick(
+        object? sender,
+        EventArgs e)
+    {
+        await RefreshTibberPricesAsync(
+            isAutomatic: true,
+            forceOptimization: false);
+    }
+
+    /// <summary>
+    /// Hämtar priser från Tibber. Vid automatisk kontroll byggs planen
+    /// endast om när prisunderlaget faktiskt har ändrats.
+    /// </summary>
+    private async Task RefreshTibberPricesAsync(
+        bool isAutomatic,
+        bool forceOptimization)
+    {
+        if (!await _tibberPriceRefreshGate.WaitAsync(0))
+            return;
+
         try
         {
-            SetStatus(
-                "Hämtar Tibber-priser...",
-                "Info");
+            if (string.IsNullOrWhiteSpace(TibberToken))
+            {
+                if (!isAutomatic)
+                {
+                    SetStatus(
+                        "Tibber-token saknas.",
+                        "Varning");
+                }
+
+                return;
+            }
+
+            if (!isAutomatic)
+            {
+                SetStatus(
+                    "Hämtar Tibber-priser...",
+                    "Info");
+            }
 
             UpdateConfigFromUi();
 
             var client =
                 new TibberClient(_config);
 
-            _prices =
+            var fetchedPrices =
                 await client.GetQuarterPricesAsync();
 
+            var pricesChanged =
+                !ArePriceListsEqual(_prices, fetchedPrices);
+
+            _lastAutomaticPriceRefreshError = null;
             SetLastUpdated(DateTime.Now);
 
-            SetStatus(
-                $"Hämtade {_prices.Count} prisrader.",
-                "OK");
+            if (pricesChanged)
+            {
+                var oldCount = _prices.Count;
+                _prices = fetchedPrices;
 
-            await OptimizeAsync();
+                await OptimizeAsync();
+
+                var message = oldCount == 0
+                    ? $"Hämtade {_prices.Count} prisrader automatiskt."
+                    : $"Nya Tibber-priser upptäcktes. Prisrader: {oldCount} → {_prices.Count}. Planen har optimerats om.";
+
+                SetStatus(
+                    message,
+                    "OK");
+            }
+            else if (forceOptimization)
+            {
+                _prices = fetchedPrices;
+                await OptimizeAsync();
+
+                SetStatus(
+                    $"Priserna är aktuella. {_prices.Count} prisrader laddade.",
+                    "OK");
+            }
         }
         catch (Exception ex)
         {
-            SetStatus(
-                ex.Message,
-                "Fel");
+            if (!isAutomatic)
+            {
+                SetStatus(
+                    ex.Message,
+                    "Fel");
+            }
+            else if (!string.Equals(
+                         _lastAutomaticPriceRefreshError,
+                         ex.Message,
+                         StringComparison.Ordinal))
+            {
+                _lastAutomaticPriceRefreshError = ex.Message;
+
+                AddLog(
+                    "Fel",
+                    $"Automatisk Tibber-hämtning misslyckades: {ex.Message}");
+            }
         }
+        finally
+        {
+            _tibberPriceRefreshGate.Release();
+        }
+    }
+
+    /// <summary>
+    /// Jämför två prislistor på tid och pris så att även korrigerade
+    /// priser för redan publicerade kvartsslots upptäcks.
+    /// </summary>
+    private static bool ArePriceListsEqual(
+        IReadOnlyList<PriceSlot> existingPrices,
+        IReadOnlyList<PriceSlot> fetchedPrices)
+    {
+        if (existingPrices.Count != fetchedPrices.Count)
+            return false;
+
+        var existingOrdered = existingPrices
+            .OrderBy(x => x.StartsAt)
+            .ToList();
+
+        var fetchedOrdered = fetchedPrices
+            .OrderBy(x => x.StartsAt)
+            .ToList();
+
+        for (var index = 0; index < existingOrdered.Count; index++)
+        {
+            if (existingOrdered[index].StartsAt !=
+                fetchedOrdered[index].StartsAt)
+            {
+                return false;
+            }
+
+            if (existingOrdered[index].PriceSekPerKwh !=
+                fetchedOrdered[index].PriceSekPerKwh)
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /// <summary>
@@ -952,6 +1213,15 @@ public sealed class MainViewModel : ObservableObject
                 _settingsService.Load();
 
             ApplyLoadedConfig(loadedConfig);
+
+            if (!string.IsNullOrWhiteSpace(TibberToken))
+            {
+                _tibberPriceRefreshTimer.Start();
+            }
+            else
+            {
+                _tibberPriceRefreshTimer.Stop();
+            }
 
             SelectedHome =
                 Homes.FirstOrDefault(
@@ -1090,6 +1360,12 @@ public sealed class MainViewModel : ObservableObject
                     "Aktivera den i Inställningar och spara först.");
             }
 
+            if (IsShellyAutomaticControlRunning)
+            {
+                throw new InvalidOperationException(
+                    "Stoppa automatisk styrning innan ett manuellt kommando skickas.");
+            }
+
             var targetText = turnOn ? "PÅ" : "AV";
 
             SetStatus(
@@ -1116,6 +1392,346 @@ public sealed class MainViewModel : ObservableObject
     }
 
     /// <summary>
+    /// Startar automatisk Shelly-styrning enligt den aktuella optimeringsplanen.
+    /// Funktionen måste startas manuellt efter varje programstart.
+    /// </summary>
+    private Task StartShellyAutomaticControlAsync()
+    {
+        try
+        {
+            UpdateConfigFromUi();
+
+            if (IsShellyAutomaticControlRunning)
+            {
+                SetStatus(
+                    "Automatisk Shelly-styrning är redan aktiv.",
+                    "Info");
+
+                return Task.CompletedTask;
+            }
+
+            if (!ShellyAutomaticControlEnabled)
+            {
+                throw new InvalidOperationException(
+                    "Automatisk Shelly-styrning är inte tillåten. " +
+                    "Aktivera den i Inställningar och spara först.");
+            }
+
+            if (_fullPlan == null || _fullPlan.Slots.Count == 0)
+            {
+                throw new InvalidOperationException(
+                    "Ingen optimeringsplan finns. Hämta priser och optimera först.");
+            }
+
+            if (!HasShellyConfiguration())
+            {
+                throw new InvalidOperationException(
+                    "Shelly Cloud-inställningarna är inte kompletta.");
+            }
+
+            _shellyControlCancellation?.Cancel();
+            _shellyControlCancellation?.Dispose();
+            _shellyControlCancellation = new CancellationTokenSource();
+
+            _shellyAutomaticConsecutiveFailures = 0;
+            _lastShellyAutomaticError = null;
+            _lastShellyAutomaticSuccessfulCycleLocal = null;
+
+            IsShellyAutomaticControlRunning = true;
+            ShellyControlLastActionText =
+                $"Startad {DateTime.Now:HH:mm:ss}.";
+
+            SetStatus(
+                "Automatisk Shelly-styrning startad.",
+                "OK");
+
+            _ = RunShellyAutomaticControlLoopAsync(
+                _shellyControlCancellation.Token);
+        }
+        catch (Exception ex)
+        {
+            SetStatus(
+                $"Kunde inte starta automatisk styrning: {ex.Message}",
+                "Fel");
+        }
+
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Stoppar den automatiska Shelly-styrningen. Pumpens aktuella läge ändras inte.
+    /// </summary>
+    private Task StopShellyAutomaticControlAsync()
+    {
+        _shellyControlCancellation?.Cancel();
+        IsShellyAutomaticControlRunning = false;
+        ShellyControlLastActionText =
+            $"Stoppad {DateTime.Now:HH:mm:ss}. Pumpens läge ändrades inte.";
+
+        SetStatus(
+            "Automatisk Shelly-styrning stoppad. Pumpens läge ändrades inte.",
+            "Info");
+
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Kör kontrollcykler tills användaren stoppar automatiken eller applikationen avslutas.
+    /// Ett tillfälligt kommunikationsfel stoppar inte automatiken. Misslyckade
+    /// cykler loggas och följs av en gradvis längre väntetid innan nästa försök.
+    /// </summary>
+    private async Task RunShellyAutomaticControlLoopAsync(
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                var cycleSucceeded = false;
+
+                try
+                {
+                    await ExecuteShellyAutomaticControlCycleAsync(
+                        cancellationToken);
+
+                    cycleSucceeded = true;
+                    _lastShellyAutomaticSuccessfulCycleLocal =
+                        DateTime.Now;
+
+                    if (_shellyAutomaticConsecutiveFailures > 0)
+                    {
+                        AddLog(
+                            "OK",
+                            $"Shelly-kommunikationen återställdes efter " +
+                            $"{_shellyAutomaticConsecutiveFailures} misslyckade försök.");
+                    }
+
+                    _shellyAutomaticConsecutiveFailures = 0;
+                    _lastShellyAutomaticError = null;
+                }
+                catch (OperationCanceledException) when (
+                    cancellationToken.IsCancellationRequested)
+                {
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    _shellyAutomaticConsecutiveFailures++;
+
+                    var errorText = ex.Message.Trim();
+                    var retryDelay = GetShellyAutomaticRetryDelay(
+                        _shellyAutomaticConsecutiveFailures);
+
+                    ShellyControlLastActionText =
+                        $"Kommunikationsfel {DateTime.Now:HH:mm:ss}. " +
+                        $"Försök {_shellyAutomaticConsecutiveFailures}; " +
+                        $"nytt försök om {FormatRetryDelay(retryDelay)}.";
+
+                    StatusText =
+                        "Automatik aktiv – Shelly-kommunikationsfel, " +
+                        $"försöker igen om {FormatRetryDelay(retryDelay)}.";
+
+                    if (!string.Equals(
+                            _lastShellyAutomaticError,
+                            errorText,
+                            StringComparison.Ordinal))
+                    {
+                        AddLog(
+                            "Varning",
+                            "Automatisk Shelly-kontroll misslyckades, " +
+                            $"men automatiken fortsätter: {errorText}");
+
+                        _lastShellyAutomaticError = errorText;
+                    }
+                    else if (
+                        _shellyAutomaticConsecutiveFailures == 3 ||
+                        _shellyAutomaticConsecutiveFailures % 10 == 0)
+                    {
+                        AddLog(
+                            "Varning",
+                            $"Shelly-felet kvarstår efter " +
+                            $"{_shellyAutomaticConsecutiveFailures} försök: " +
+                            errorText);
+                    }
+
+                    try
+                    {
+                        await Task.Delay(
+                            retryDelay,
+                            cancellationToken);
+                    }
+                    catch (OperationCanceledException) when (
+                        cancellationToken.IsCancellationRequested)
+                    {
+                        break;
+                    }
+                }
+
+                if (!cycleSucceeded ||
+                    cancellationToken.IsCancellationRequested)
+                {
+                    continue;
+                }
+
+                var pollSeconds = Math.Clamp(
+                    (int)Math.Round(
+                        ShellyControlPollSeconds,
+                        MidpointRounding.AwayFromZero),
+                    15,
+                    300);
+
+                try
+                {
+                    await Task.Delay(
+                        TimeSpan.FromSeconds(pollSeconds),
+                        cancellationToken);
+                }
+                catch (OperationCanceledException) when (
+                    cancellationToken.IsCancellationRequested)
+                {
+                    break;
+                }
+            }
+        }
+        finally
+        {
+            IsShellyAutomaticControlRunning = false;
+        }
+    }
+
+    /// <summary>
+    /// Returnerar väntetid efter ett misslyckat automatikförsök.
+    /// Väntetiden ökar stegvis men begränsas till fem minuter.
+    /// </summary>
+    private static TimeSpan GetShellyAutomaticRetryDelay(
+        int consecutiveFailures)
+    {
+        var seconds = consecutiveFailures switch
+        {
+            <= 1 => 30,
+            2 => 60,
+            3 => 120,
+            4 => 180,
+            _ => 300
+        };
+
+        return TimeSpan.FromSeconds(seconds);
+    }
+
+    /// <summary>
+    /// Formaterar väntetiden för statusfält och logg.
+    /// </summary>
+    private static string FormatRetryDelay(
+        TimeSpan delay)
+    {
+        return delay.TotalMinutes >= 1
+            ? $"{delay.TotalMinutes:0} min"
+            : $"{delay.TotalSeconds:0} sek";
+    }
+
+    /// <summary>
+    /// Jämför planerat läge för aktuell kvart med Shellys verkliga läge och
+    /// korrigerar endast när de skiljer sig. Saknas aktuell planslot görs ingenting.
+    /// </summary>
+    private async Task ExecuteShellyAutomaticControlCycleAsync(
+        CancellationToken cancellationToken)
+    {
+        if (!await _shellyControlGate.WaitAsync(0, cancellationToken))
+            return;
+
+        try
+        {
+            var now = DateTimeOffset.Now;
+            var currentSlot = GetCurrentPlannedSlot(now);
+
+            if (currentSlot == null)
+            {
+                ShellyPlanTargetText = "Ingen planslot";
+                ShellyNextChangeText = "-";
+                ShellyControlLastActionText =
+                    $"Ingen aktuell planslot {DateTime.Now:HH:mm:ss}; ingen styrning utförd.";
+                return;
+            }
+
+            var desiredOn = currentSlot.Run;
+            ShellyPlanTargetText = desiredOn ? "PÅ" : "AV";
+            ShellyNextChangeText = GetNextPlanChangeText(currentSlot);
+
+            using var client = new ShellyCloudClient(_config);
+            var status = await client.GetSwitchStatusAsync();
+            ApplyShellyStatus(status);
+
+            if (!status.IsOnline)
+            {
+                ShellyControlLastActionText =
+                    $"Enheten offline {DateTime.Now:HH:mm:ss}.";
+                AddLog(
+                    "Varning",
+                    "Automatiken kunde inte styra eftersom Shelly-enheten är offline.");
+                return;
+            }
+
+            if (status.IsOn == desiredOn)
+            {
+                ShellyControlLastActionText =
+                    $"Rätt läge verifierat {DateTime.Now:HH:mm:ss}.";
+                return;
+            }
+
+            var verifiedStatus = await client.SetSwitchStateAsync(
+                desiredOn,
+                status);
+
+            ApplyShellyStatus(verifiedStatus);
+
+            var targetText = desiredOn ? "PÅ" : "AV";
+            ShellyControlLastActionText =
+                $"Växlade till {targetText} {DateTime.Now:HH:mm:ss}.";
+
+            AddLog(
+                "OK",
+                $"Automatiken växlade pumpen till {targetText} enligt planen.");
+        }
+        finally
+        {
+            _shellyControlGate.Release();
+        }
+    }
+
+    /// <summary>
+    /// Hämtar den planslot som täcker aktuell lokal tid.
+    /// </summary>
+    private PlannedSlot? GetCurrentPlannedSlot(DateTimeOffset now)
+    {
+        if (_fullPlan == null)
+            return null;
+
+        return _fullPlan.Slots
+            .OrderBy(x => x.StartsAt)
+            .FirstOrDefault(x =>
+                now >= x.StartsAt &&
+                now < x.StartsAt.AddMinutes(15));
+    }
+
+    /// <summary>
+    /// Returnerar tidpunkten för nästa planerade ändring efter aktuell slot.
+    /// </summary>
+    private string GetNextPlanChangeText(PlannedSlot currentSlot)
+    {
+        if (_fullPlan == null)
+            return "-";
+
+        var nextChange = _fullPlan.Slots
+            .Where(x => x.StartsAt > currentSlot.StartsAt)
+            .OrderBy(x => x.StartsAt)
+            .FirstOrDefault(x => x.Run != currentSlot.Run);
+
+        return nextChange == null
+            ? "Ingen i planen"
+            : nextChange.StartsAt.ToLocalTime().ToString("ddd HH:mm");
+    }
+
+    /// <summary>
     /// Applicerar en inläst konfiguration och uppdaterar alla UI-properties.
     /// </summary>
     private void ApplyLoadedConfig(
@@ -1131,9 +1747,18 @@ public sealed class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(ShellyCloudAuthKey));
         OnPropertyChanged(nameof(ShellyDeviceId));
         OnPropertyChanged(nameof(ShellyManualControlEnabled));
+        OnPropertyChanged(nameof(ShellyAutomaticControlEnabled));
 
         ShellySwitchId =
             _config.ShellySwitchId;
+
+        ShellyControlPollSeconds =
+            _config.ShellyControlPollSeconds;
+
+        ApplyPumpRuntimeSnapshot(
+            _pumpRuntimeTracker.GetSnapshot(
+                _config.ShellyDeviceId,
+                _config.ShellySwitchId));
 
         MinRunHoursPerDay =
             _config.MinRunHoursPerDay;
@@ -1236,6 +1861,11 @@ public sealed class MainViewModel : ObservableObject
                 ShellySwitchId,
                 MidpointRounding.AwayFromZero);
 
+        _config.ShellyControlPollSeconds =
+            (int)Math.Round(
+                ShellyControlPollSeconds,
+                MidpointRounding.AwayFromZero);
+
         ValidateConfig();
     }
 
@@ -1291,6 +1921,12 @@ public sealed class MainViewModel : ObservableObject
                 _config.ShellySwitchId,
                 0,
                 99);
+
+        _config.ShellyControlPollSeconds =
+            Math.Clamp(
+                _config.ShellyControlPollSeconds,
+                15,
+                300);
     }
 
     /// <summary>
@@ -1441,7 +2077,8 @@ public sealed class MainViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Applicerar Shelly-statusen på dashboardens read-only-fält.
+    /// Applicerar Shelly-statusen på dashboardens read-only-fält och
+    /// uppdaterar den lokalt beräknade driftstatistiken.
     /// </summary>
     private void ApplyShellyStatus(
         ShellySwitchStatus status)
@@ -1451,11 +2088,63 @@ public sealed class MainViewModel : ObservableObject
         ShellyPowerText = status.ActivePowerText;
         ShellyVoltageText = status.VoltageText;
         ShellyCurrentText = status.CurrentText;
-        ShellyOnTimeText = status.OnTimeText;
-        ShellySwitchOnCountText = status.SwitchOnCountText;
         ShellyLastReadTimeText = status.ReadAtTimeText;
         ShellyLastReadTooltipText =
             $"Senast läst: {status.ReadAtTooltipText}";
+
+        if (!status.IsOnline || !status.IsOn.HasValue)
+            return;
+
+        var runtimeSnapshot = _pumpRuntimeTracker.Observe(
+            status,
+            GetMaximumReliableShellyObservationGap());
+
+        ApplyPumpRuntimeSnapshot(runtimeSnapshot);
+    }
+
+    /// <summary>
+    /// Uppdaterar dashboardens egna dagsräknare.
+    /// </summary>
+    private void ApplyPumpRuntimeSnapshot(
+        PumpRuntimeSnapshot snapshot)
+    {
+        ShellyOnTimeText = snapshot.RunTimeTodayText;
+        ShellySwitchOnCountText = snapshot.StartsTodayText;
+        ShellyRuntimeTooltipText =
+            $"Egen statistik för {snapshot.TrackingDate:yyyy-MM-dd}." +
+            Environment.NewLine +
+            $"Senaste start: {snapshot.LastStartedText}" +
+            Environment.NewLine +
+            $"Senaste stopp: {snapshot.LastStoppedText}" +
+            Environment.NewLine +
+            $"Senaste observation: {snapshot.LastObservedText}" +
+            Environment.NewLine +
+            "Endast verifierade intervall medan appen körs räknas.";
+    }
+
+    /// <summary>
+    /// Uppdaterar visningen mellan Shelly-läsningarna utan att skriva
+    /// runtime-state.json varje sekund.
+    /// </summary>
+    private void RefreshPumpRuntimeDisplay()
+    {
+        var snapshot = _pumpRuntimeTracker.GetLiveSnapshot(
+            _config.ShellyDeviceId,
+            _config.ShellySwitchId,
+            DateTimeOffset.Now,
+            GetMaximumReliableShellyObservationGap());
+
+        ApplyPumpRuntimeSnapshot(snapshot);
+    }
+
+    /// <summary>
+    /// Anger hur långt det maximalt får vara mellan två statusläsningar för
+    /// att intervallet ska räknas som tillförlitlig drifttid. Appsessionen
+    /// identifieras separat, så tid när appen varit stängd räknas aldrig.
+    /// </summary>
+    private static TimeSpan GetMaximumReliableShellyObservationGap()
+    {
+        return TimeSpan.FromHours(12);
     }
 
     /// <summary>
